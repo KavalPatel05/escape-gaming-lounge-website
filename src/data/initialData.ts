@@ -59,7 +59,7 @@ export const MOCK_CUSTOMER: CustomerProfile = {
   id: 'CUST-001',
   name: 'Kavalpreet Singh',
   phone: '+91 98765 43210',
-  email: 'kaval@escapegaming.com',
+  email: 'patel.kaval.02@gmail.com',
   totalPointsBalance: 14,
   qrCodeValue: 'EGL-CUST-001-98765',
 };

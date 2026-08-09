@@ -15,7 +15,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91 98765 43210');
-  const [email, setEmail] = useState('gamer@escapegaming.com');
+  const [email, setEmail] = useState('patel.kaval.02@gmail.com');
   const [otpOrPass, setOtpOrPass] = useState('123456');
 
   const [isOtpSent, setIsOtpSent] = useState(false);
