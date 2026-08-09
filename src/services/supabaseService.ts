@@ -2,7 +2,126 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { CustomerProfile, Station, Booking, RewardPoint, NotificationDispatch } from '../types';
 
 export const supabaseService = {
-  // 1. Fetch or create customer profile by Phone or Email
+  // --- REAL SUPABASE AUTHENTICATION ---
+  
+  // 1. Mobile Phone SMS OTP: Send 6-digit OTP code to phone number
+  async sendPhoneOtp(phone: string): Promise<{ success: boolean; message: string }> {
+    if (!isSupabaseConfigured) {
+      return { success: true, message: 'Demo Mode: SMS OTP code 123456 generated.' };
+    }
+
+    try {
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formattedPhone,
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+      return { success: true, message: `OTP sent via SMS to ${formattedPhone}` };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to send OTP';
+      return { success: false, message: errMsg };
+    }
+  },
+
+  // 2. Mobile Phone SMS OTP: Verify OTP code
+  async verifyPhoneOtp(phone: string, token: string): Promise<{ success: boolean; message: string; user?: any }> {
+    if (!isSupabaseConfigured) {
+      return { success: true, message: 'Verified (Demo)' };
+    }
+
+    try {
+      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone.replace(/\D/g, '')}`;
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: formattedPhone,
+        token,
+        type: 'sms',
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+      return { success: true, message: 'Mobile OTP verified successfully!', user: data.user };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'OTP Verification failed';
+      return { success: false, message: errMsg };
+    }
+  },
+
+  // 3. Email Authentication: Sign Up with Password
+  async signUpWithEmail(email: string, password: string, name: string, phone: string): Promise<{ success: boolean; message: string; user?: any }> {
+    if (!isSupabaseConfigured) {
+      return { success: true, message: 'Account created (Demo)' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            phone: phone,
+          },
+        },
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+
+      // Upsert into profiles table
+      if (data.user) {
+        await supabase.from('profiles').upsert([{
+          id: data.user.id,
+          name: name,
+          email: email,
+          phone: phone,
+          qr_code_value: `EGL-${data.user.id.slice(-4)}`,
+        }]);
+      }
+
+      return { success: true, message: 'Registration successful!', user: data.user };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Sign up failed';
+      return { success: false, message: errMsg };
+    }
+  },
+
+  // 4. Email Authentication: Sign In with Password
+  async signInWithEmail(email: string, password: string): Promise<{ success: boolean; message: string; user?: any }> {
+    if (!isSupabaseConfigured) {
+      return { success: true, message: 'Logged in (Demo)' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+
+      return { success: true, message: 'Sign in successful!', user: data.user };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Authentication failed';
+      return { success: false, message: errMsg };
+    }
+  },
+
+  // 5. Sign Out
+  async signOut(): Promise<void> {
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
+  },
+
+  // --- DATABASE SYNC METHODS ---
+
   async syncCustomerProfile(profile: Partial<CustomerProfile>): Promise<CustomerProfile | null> {
     if (!isSupabaseConfigured) return null;
 
@@ -56,7 +175,6 @@ export const supabaseService = {
     return null;
   },
 
-  // 2. Fetch stations from Supabase
   async getStations(): Promise<Station[] | null> {
     if (!isSupabaseConfigured) return null;
     try {
@@ -79,7 +197,6 @@ export const supabaseService = {
     return null;
   },
 
-  // 3. Save booking to Supabase
   async saveBooking(booking: Booking): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
@@ -110,7 +227,6 @@ export const supabaseService = {
     }
   },
 
-  // 4. Save notification dispatch to Supabase
   async saveNotification(notif: NotificationDispatch): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
@@ -131,7 +247,6 @@ export const supabaseService = {
     }
   },
 
-  // 5. Sync Reward Points
   async saveRewardPoint(pt: RewardPoint): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {

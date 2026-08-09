@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Smartphone, Mail, UserCheck } from 'lucide-react';
+import { supabaseService } from '../services/supabaseService';
+import { X, Smartphone, Mail, UserCheck, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,28 +17,94 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91 98765 43210');
   const [email, setEmail] = useState('patel.kaval.02@gmail.com');
-  const [otpOrPass, setOtpOrPass] = useState('123456');
+  const [password, setPassword] = useState('GamerPass123!');
+  const [otpCode, setOtpCode] = useState('');
 
   const [isOtpSent, setIsOtpSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   if (!isOpen) return null;
+
+  // Handle Mobile Phone SMS OTP Send
+  const handleSendPhoneOtp = async () => {
+    setLoading(true);
+    setFeedback(null);
+
+    const res = await supabaseService.sendPhoneOtp(phone);
+    setLoading(false);
+
+    if (res.success) {
+      setIsOtpSent(true);
+      setFeedback({ type: 'success', message: res.message });
+    } else {
+      setFeedback({ type: 'error', message: res.message });
+    }
+  };
+
+  // Handle Mobile Phone SMS OTP Verify
+  const handleVerifyPhoneOtp = async () => {
+    setLoading(true);
+    setFeedback(null);
+
+    const res = await supabaseService.verifyPhoneOtp(phone, otpCode);
+    setLoading(false);
+
+    if (res.success) {
+      setFeedback({ type: 'success', message: 'Authentication Successful!' });
+      loginUser({
+        name: name || `Gamer (${phone.slice(-4)})`,
+        phone: phone,
+        email: email,
+      });
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } else {
+      setFeedback({ type: 'error', message: res.message });
+    }
+  };
+
+  // Handle Email Password Authentication
+  const handleEmailAuth = async () => {
+    setLoading(true);
+    setFeedback(null);
+
+    let res;
+    if (authMode === 'signup') {
+      res = await supabaseService.signUpWithEmail(email, password, name, phone);
+    } else {
+      res = await supabaseService.signInWithEmail(email, password);
+    }
+    setLoading(false);
+
+    if (res.success) {
+      setFeedback({ type: 'success', message: res.message });
+      loginUser({
+        name: name || email.split('@')[0],
+        phone: phone,
+        email: email,
+      });
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } else {
+      setFeedback({ type: 'error', message: res.message });
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (loginMethod === 'phone' && !isOtpSent) {
-      setIsOtpSent(true);
-      return;
+    if (loginMethod === 'phone') {
+      if (!isOtpSent) {
+        handleSendPhoneOtp();
+      } else {
+        handleVerifyPhoneOtp();
+      }
+    } else {
+      handleEmailAuth();
     }
-
-    // Process Login / Registration
-    loginUser({
-      name: name || (loginMethod === 'phone' ? `Gamer (${phone.slice(-4)})` : email.split('@')[0]),
-      phone: phone || '+91 98765 43210',
-      email: email || 'gamer@escapegaming.com',
-    });
-
-    onClose();
   };
 
   return (
@@ -79,18 +146,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           <h3 className="font-cyber" style={{ fontSize: '1.3rem', color: '#FFF', marginBottom: '4px' }}>
-            {authMode === 'login' ? 'Gamer Portal Login' : 'Create Member Account'}
+            {authMode === 'login' ? 'Gamer Auth Portal' : 'Create Member Account'}
           </h3>
           <p style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>
-            Login via Phone Number or Email ID to access bookings & 30-day reward points
+            Real Supabase Authentication via Mobile SMS OTP or Email
           </p>
         </div>
 
-        {/* Method Toggle: Phone vs Email */}
+        {/* Feedback Alert Banner */}
+        {feedback && (
+          <div style={{
+            padding: '10px 14px',
+            borderRadius: '10px',
+            marginBottom: '16px',
+            fontSize: '0.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: feedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+            border: feedback.type === 'success' ? '1px solid #10B981' : '1px solid #EF4444',
+            color: feedback.type === 'success' ? '#34D399' : '#F87171',
+          }}>
+            {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{feedback.message}</span>
+          </div>
+        )}
+
+        {/* Method Selector: Phone vs Email */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '20px', background: '#0F172A', padding: '4px', borderRadius: '10px' }}>
           <button
             type="button"
-            onClick={() => { setLoginMethod('phone'); setIsOtpSent(false); }}
+            onClick={() => { setLoginMethod('phone'); setIsOtpSent(false); setFeedback(null); }}
             style={{
               background: loginMethod === 'phone' ? 'rgba(6, 182, 212, 0.3)' : 'transparent',
               border: loginMethod === 'phone' ? '1px solid #06B6D4' : 'none',
@@ -106,12 +192,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               gap: '6px',
             }}
           >
-            <Smartphone size={16} color="#06B6D4" /> Mobile Phone
+            <Smartphone size={16} color="#06B6D4" /> Mobile SMS OTP
           </button>
 
           <button
             type="button"
-            onClick={() => { setLoginMethod('email'); setIsOtpSent(false); }}
+            onClick={() => { setLoginMethod('email'); setIsOtpSent(false); setFeedback(null); }}
             style={{
               background: loginMethod === 'email' ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
               border: loginMethod === 'email' ? '1px solid #8B5CF6' : 'none',
@@ -148,10 +234,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
           {loginMethod === 'phone' ? (
             <div>
-              <label style={{ fontSize: '0.75rem', color: '#9CA3AF', display: 'block', marginBottom: '4px' }}>Mobile Phone Number:</label>
+              <label style={{ fontSize: '0.75rem', color: '#9CA3AF', display: 'block', marginBottom: '4px' }}>Mobile Phone (+91):</label>
               <input
                 type="text"
                 required
+                disabled={isOtpSent}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 98765 43210"
@@ -166,30 +253,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="gamer@escapegaming.com"
+                placeholder="patel.kaval.02@gmail.com"
                 style={{ width: '100%', padding: '10px', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#FFF', fontSize: '0.85rem' }}
               />
             </div>
           )}
 
-          {(isOtpSent || loginMethod === 'email') && (
+          {loginMethod === 'phone' && isOtpSent && (
             <div>
-              <label style={{ fontSize: '0.75rem', color: '#9CA3AF', display: 'block', marginBottom: '4px' }}>
-                {loginMethod === 'phone' ? 'Enter 6-Digit SMS OTP:' : 'Account Password:'}
-              </label>
+              <label style={{ fontSize: '0.75rem', color: '#9CA3AF', display: 'block', marginBottom: '4px' }}>Enter 6-Digit SMS OTP Code:</label>
               <input
-                type="password"
+                type="text"
                 required
-                value={otpOrPass}
-                onChange={(e) => setOtpOrPass(e.target.value)}
-                placeholder="••••••"
-                style={{ width: '100%', padding: '10px', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#FFF', fontSize: '0.85rem', letterSpacing: '0.2em' }}
+                maxLength={6}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="123456"
+                style={{ width: '100%', padding: '10px', background: '#0F172A', border: '1px solid #06B6D4', borderRadius: '8px', color: '#FFF', fontSize: '1rem', letterSpacing: '0.3em', textAlign: 'center' }}
               />
             </div>
           )}
 
-          <button type="submit" className="btn-neon-purple" style={{ justifyContent: 'center', width: '100%', marginTop: '6px' }}>
-            {loginMethod === 'phone' && !isOtpSent ? 'Send OTP Code' : authMode === 'login' ? 'Authenticate & Login' : 'Create Account'}
+          {loginMethod === 'email' && (
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#9CA3AF', display: 'block', marginBottom: '4px' }}>Account Password:</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{ width: '100%', padding: '10px', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#FFF', fontSize: '0.85rem' }}
+              />
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} className="btn-neon-purple" style={{ justifyContent: 'center', width: '100%', marginTop: '6px' }}>
+            {loading ? <Loader2 size={18} className="animate-spin" /> : loginMethod === 'phone' ? (!isOtpSent ? 'Send Mobile SMS OTP' : 'Verify OTP & Login') : (authMode === 'login' ? 'Sign In with Email' : 'Register Account')}
           </button>
         </form>
 
@@ -197,7 +297,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           {authMode === 'login' ? (
             <span>New Gamer? <button onClick={() => setAuthMode('signup')} style={{ background: 'none', border: 'none', color: '#06B6D4', fontWeight: 700, cursor: 'pointer' }}>Create Account</button></span>
           ) : (
-            <span>Already have an account? <button onClick={() => setAuthMode('login')} style={{ background: 'none', border: 'none', color: '#06B6D4', fontWeight: 700, cursor: 'pointer' }}>Login</button></span>
+            <span>Already have an account? <button onClick={() => setAuthMode('login')} style={{ background: 'none', border: 'none', color: '#06B6D4', fontWeight: 700, cursor: 'pointer' }}>Sign In</button></span>
           )}
         </div>
       </div>
